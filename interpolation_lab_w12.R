@@ -2,6 +2,13 @@
 #     Local Interpolation Lab
 #############################################
 
+# Install Packages
+install.packages("geoR")
+install.packages("gstat")
+install.packages("sp")
+install.packages("raster")
+install.packages("RColorBrewer")
+
 # Load necessary libraries
 library(geoR)          # Geostatistical analysis
 library(gstat)         # Spatial interpolation
@@ -22,9 +29,12 @@ library(RColorBrewer)  # Color palettes for plotting
 #   head(dataset_name)       # Displays the first few rows of the dataset
 
 #----------------
-data()           # Complete: Load the dataset
-help()           # Complete: View documentation for the dataset
-head()           # Complete: Inspect first few rows of the dataset
+data(soja98)     # Complete: Load the dataset
+help(soja98)     # Complete: View documentation for the dataset
+head(soja98)     # Complete: Inspect first few rows of the dataset
+
+str(soja98)     # To view data
+
 #----------------
 
 ### Step 2: Select Relevant Columns
@@ -36,7 +46,7 @@ head()           # Complete: Inspect first few rows of the dataset
 #   dataframe <- dataframe[, c(column_index1, column_index2, column_index3)]
 
 #----------------
-soja98 <- soja98[, c(_________________________)]  # Complete: Select relevant columns (X, Y, K)
+soja98 <- soja98[, c(1, 2, 5)]  # Complete: Select relevant columns (X, Y, K)
 #----------------
 
 ### Step 3: Convert to Spatial Points
@@ -49,7 +59,7 @@ soja98 <- soja98[, c(_________________________)]  # Complete: Select relevant co
 #   coordinates(dataframe) <- ~longitude+latitude
 
 #----------------
-coordinates(soja98) <- _________________________  # Complete: Convert to spatial points using X and Y columns
+coordinates(soja98) <- ~X+Y  # Complete: Convert to spatial points using X and Y columns
 #----------------
 
 ### Step 4: Split Data into Calibration and Validation Sets
@@ -101,10 +111,9 @@ val <- soja98[-IDX, ]                      # Validation dataset (remaining indic
 cellSize <- 5  # Define grid cell size (5 meters)
 range.all <- extent(soja98)  # Get spatial extent of the dataset
 
-grd <- expand.grid(
-      x = seq(_________________________),  # Complete: Generate X coordinates
-      y = seq(_________________________)   # Complete: Generate Y coordinates
-)
+grd <- expand.grid(x=seq(range.all[1]-cellSize/2, range.all[2], by=cellSize), 
+                   y=seq(range.all[3], range.all[4], by=cellSize)) # Complete: Generate Y coordinates
+
 coordinates(grd) <- ~x + y   # Convert to spatial points object
 gridded(grd) <- TRUE         # Convert to gridded structure
 
@@ -124,7 +133,7 @@ gridded(grd) <- TRUE         # Convert to gridded structure
 ## Example of IDW interpolation:
 #   idw_result <- idw(variable ~ formula, calibration_data, grid)
 
-K.idw <- idw(_________________________)  # Complete: Specify formula, calibration data, and grid
+K.idw <- idw(K~1, cal, grd)  # Complete: Specify formula, calibration data, and grid
 
 
 
@@ -145,6 +154,22 @@ cols <- brewer.pal(9, "BuPu")  # Generate color ramp for visualization
 spplot(K.idw, "var1.pred", col.regions = cols, cuts = 8, main = 'Inverse Distance Weighting')
 
 
+#plotting commands
+cols <- brewer.pal(9, 'BuPu') #generates colorramp
+spp.idw <- spplot(K.idw, "var1.pred", col.regions=cols, cuts = 8) #generates dummy map
+
+cuts <- spp.idw$panel.args.common$at 
+#gets coloramp bins from dummy map
+lev <- cut(cal$K, breaks=cuts) #determines colors for points ftom cal
+pts.1 <- list("sp.points", cal, pch = 24, cex=2, col='black', lwd = 2)
+pts.2 <- list("sp.points", cal, pch = 17, cex=2, 
+              col=cols[lev], lwd = 1)
+#generates points to represent the calibration locations
+
+spplot(K.idw, "var1.pred", col.regions=cols, cuts = 8,
+       sp.layout=list(pts.2, pts.1),main = 'Inverse Distance')
+#plots final map
+
 
 ### Step 4: Evaluate Accuracy with RMSE
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -162,10 +187,10 @@ spplot(K.idw, "var1.pred", col.regions = cols, cuts = 8, main = 'Inverse Distanc
 r.idw <- raster(K.idw)               # Convert IDW output to a raster object
 
 k.idw.cal <- extract(r.idw, cal)     # Extract interpolated values at calibration points
-RMSE.idw.cal <- sqrt(mean((_________________________)))  # Complete: Apply RMSE formula
+RMSE.idw.cal <- sqrt(mean((k.idw.cal-cal$K)^2, na.rm=T))  # Complete: Apply RMSE formula
 
 k.idw.val <- extract(r.idw, val)     # Extract interpolated values at validation points
-RMSE.idw.val <- sqrt(mean((_________________________)))  # Complete: Apply RMSE formula
+RMSE.idw.val <- sqrt(mean((k.idw.val-val$K)^2, na.rm=T))  # Complete: Apply RMSE formula
 
 cat("IDW Calibration RMSE:", RMSE.idw.cal)
 cat("IDW Validation RMSE:", RMSE.idw.val)
@@ -175,6 +200,9 @@ cat("IDW Validation RMSE:", RMSE.idw.val)
 ### Step 5: Use Yardstick Package for Alternative RMSE Calculation
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Use the `yardstick` package to calculate RMSE as an alternative method.
+
+install.packages("yardstick")
+
 library(yardstick)
 library(dplyr)
 
@@ -213,7 +241,7 @@ cat("Validation RMSE using yardstick:", yardstick_rmse$.estimate)
 #   sample_sizes <- seq(10, 100, by = 10)
 #   results <- array(NA, length(sample_sizes))
 
-n <- seq(5, 150, by = _________)  # Complete: Specify increment for sample sizes
+n <- seq(5, 150, by = 5)  # Complete: Specify increment for sample sizes
 RMSE <- array(NA, length(n))      # Array to store RMSE values
 
 
@@ -236,21 +264,20 @@ RMSE <- array(NA, length(n))      # Array to store RMSE values
 #     # Perform interpolation and calculate RMSE
 #   }
 
-for (i in seq_along(n)) {
+for (i in seq_along(n)) { #random sample of calibration 
   # Randomly sample calibration points
-  samp <- sample(_________________________)  # Complete: Specify population and sample size
+  samp <- sample(1:length(cal), n[i])  # Complete: Specify population and sample size
   
   # Perform IDW interpolation with sampled data
-  K.idw <- idw(_________________________)    # Complete: Specify formula, data, and grid
+  K.idw <- idw(K~1, cal[samp ,], grd)   # Complete: Specify formula, data, and grid
   
   # Convert IDW output to raster and extract validation values
   r.idw <- raster(K.idw)
   k.idw.val <- extract(r.idw, val)
   
   # Calculate RMSE for validation data
-  RMSE[i] <- sqrt(mean((_________________________)))  # Complete: Apply RMSE formula
+  RMSE[i] <- sqrt(mean((k.idw.val-val$K)^2, na.rm=T))  # Complete: Apply RMSE formula
 }
-
 
 
 ### Step 3: Plot Results
@@ -272,10 +299,10 @@ plot(n, RMSE, type = "b",
 
 
 ### Reflection Questions:
-1. **Why doesn’t RMSE decrease smoothly as sample size increases?**  
-   Hint: Consider the role of randomness in sampling calibration points.
+# 1. **Why doesn’t RMSE decrease smoothly as sample size increases?**  
+  #Hint: Consider the role of randomness in sampling calibration points.
 
-2. **What sample size minimizes RMSE in your simulation? Is this consistent across multiple runs?**
+# 2. **What sample size minimizes RMSE in your simulation? Is this consistent across multiple runs?**
       
       
 ###############################################
@@ -296,9 +323,9 @@ plot(n, RMSE, type = "b",
 #   variog <- variogram(variable ~ 1, data)
 #   model_fit <- fit.variogram(variog, vgm("Model"))
 
-variog <- variogram(_________________________)  # Complete: Specify formula and data
-sphr.fit <- fit.variogram(_________________________)  # Complete: Fit spherical model
-exp.fit <- fit.variogram(_________________________)  # Complete: Fit exponential model
+variog <- variogram(K~1, cal) # Complete: Specify formula and data
+sphr.fit <- fit.variogram(variog, vgm('Sph'))  # Complete: Fit spherical model
+exp.fit <- fit.variogram(variog, vgm('Exp'))  # Complete: Fit exponential model
 
 
 
@@ -323,8 +350,8 @@ gamma.exp <- variogramLine(exp.fit, dist_vector = bins)$gamma     # Exponential 
 
 plot(bins, gamma, main = "Variogram Models", 
      xlab = "Lag Distance", ylab = "Semivariance")
-lines(_________________________)  # Complete: Add spherical model line (color = 'blue')
-lines(_________________________)  # Complete: Add exponential model line (color = 'red')
+lines(bins, gamma.sphr, col='blue')  # Complete: Add spherical model line (color = 'blue')
+lines(bins, gamma.exp, col='red')  # Complete: Add exponential model line (color = 'red')
 legend("topright", 
        legend = c("Spherical", "Exponential"), 
        col = c("blue", "red"), 
@@ -343,8 +370,8 @@ legend("topright",
 ## Example of kriging:
 #   krige_result <- krige(variable ~ 1, data, grid, model = variogram_model)
 
-K.sph <- krige(_________________________)  # Complete: Specify formula, data, grid, and model
-K.exp <- krige(_________________________)  # Complete: Specify formula, data, grid, and model
+K.sph <- krige(K~1, cal, grd, model=sphr.fit) # Complete: Specify formula, data, grid, and model
+K.exp <- krige(K~1, cal, grd, model=exp.fit)  # Complete: Specify formula, data, grid, and model
 
 
 
@@ -369,18 +396,19 @@ spplot(K.exp, main = "Ordinary Kriging (Exponential)")
 # Spherical model
 r.sph <- raster(K.sph)
 k.sph.cal <- extract(r.sph, cal)
-RMSE.sph.cal <- sqrt(mean((_________________________)))  # Complete: Apply RMSE formula
+RMSE.sph.cal <- sqrt(mean((k.sph.cal-cal$K)^2, na.rm=T))  # Complete: Apply RMSE formula
 
 k.sph.val <- extract(r.sph, val)
-RMSE.sph.val <- sqrt(mean((_________________________)))  # Complete: Apply RMSE formula
+RMSE.sph.val <- sqrt(mean((k.sph.val-val$K)^2, na.rm=T))  # Complete: Apply RMSE formula
 
 # Exponential model
 r.exp <- raster(K.exp)
 k.exp.cal <- extract(r.exp, cal)
-RMSE.exp.cal <- sqrt(mean((_________________________)))  # Complete: Apply RMSE formula
+RMSE.exp.cal <- sqrt(mean((k.exp.cal-cal$K)^2, na.rm=T))  # Complete: Apply RMSE formula
 
 k.exp.val <- extract(r.exp, val)
-RMSE.exp.val <- sqrt(mean((_________________________)))  # Complete: Apply RMSE formula
+RMSE.exp.val <- sqrt(mean((k.exp.val-val$K)^2, na.rm=T))
+
 
 cat("Spherical Model Calibration RMSE:", RMSE.sph.cal,
     "\nSpherical Model Validation RMSE:", RMSE.sph.val,
@@ -390,12 +418,12 @@ cat("Spherical Model Calibration RMSE:", RMSE.sph.cal,
 
 
 ### Reflection Questions:
-1. **Why might the spherical model have a lower calibration RMSE than the exponential model?**  
-      Hint: Consider the nugget effect and how it influences weights in kriging.
+## 1. **Why might the spherical model have a lower calibration RMSE than the exponential model?**  
+      #Hint: Consider the nugget effect and how it influences weights in kriging.
 
-2. **How do the variogram models (spherical vs. exponential) affect the spatial pattern of kriging variance?**  
-      Hint: Compare the `var1.var` maps using `spplot(K.sph[, "var1.var"])`.
+## 2. **How do the variogram models (spherical vs. exponential) affect the spatial pattern of kriging variance?**  
+     # Hint: Compare the `var1.var` maps using `spplot(K.sph[, "var1.var"])`.
 
-3. **Under what conditions would kriging outperform IDW?**  
-      Hint: Think about data sparsity and spatial structure.
+## 3. **Under what conditions would kriging outperform IDW?**  
+    #  Hint: Think about data sparsity and spatial structure.
 
